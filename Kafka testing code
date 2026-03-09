@@ -1,0 +1,107 @@
+"""
+Kafka Producer Script
+Connects to Huawei OBS Kafka instance using SASL_SSL + SCRAM-SHA-512
+and sends a message to create a topic.
+
+Requirements:
+    pip install kafka-python
+"""
+
+from kafka import KafkaProducer
+from kafka.admin import KafkaAdminClient, NewTopic
+from kafka.errors import TopicAlreadyExistsError
+import json
+import ssl
+
+# ─── Configuration ────────────────────────────────────────────────────────────
+
+USERNAME = "your username"
+PASSWORD = "your password"       # Replace with your actual password
+
+# Choose ONE of the broker lists below:
+
+# Option A – Private Network (use if your machine is on the same VPC)
+BROKERS = [
+    "192.168.100.0:9093",
+    "192.168.100.1:9093",
+    "192.168.100.2:9093",
+]
+
+
+TOPIC_NAME = "abc-topic"           # Change to your desired topic name
+NUM_PARTITIONS = 3                    # Number of partitions
+REPLICATION_FACTOR = 3               # Replication factor
+
+SSL_CAFILE = r"path to downladed certificate from zong cloud"          # Path to the downloaded SSL certificate
+
+# ─── SSL Context ──────────────────────────────────────────────────────────────
+
+ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+ssl_context.load_verify_locations(SSL_CAFILE)
+ssl_context.check_hostname = False    # Set True if your cert includes hostname
+ssl_context.verify_mode = ssl.CERT_REQUIRED
+
+# ─── Common Auth Config ───────────────────────────────────────────────────────
+
+auth_config = dict(
+    bootstrap_servers=BROKERS,
+    security_protocol="SASL_SSL",
+    sasl_mechanism="SCRAM-SHA-512",
+    sasl_plain_username=USERNAME,
+    sasl_plain_password=PASSWORD,
+    ssl_context=ssl_context,
+)
+
+# ─── Step 1: Create the Topic ─────────────────────────────────────────────────
+
+def create_topic():
+    admin = KafkaAdminClient(**auth_config)
+    topic = NewTopic(
+        name=TOPIC_NAME,
+        num_partitions=NUM_PARTITIONS,
+        replication_factor=REPLICATION_FACTOR,
+    )
+    try:
+        admin.create_topics([topic])
+        print(f"[✓] Topic '{TOPIC_NAME}' created successfully.")
+    except TopicAlreadyExistsError:
+        print(f"[i] Topic '{TOPIC_NAME}' already exists — skipping creation.")
+    finally:
+        admin.close()
+
+# ─── Step 2: Send a Test Message ──────────────────────────────────────────────
+
+def send_message():
+    producer = KafkaProducer(
+        **auth_config,
+        value_serializer=lambda v: json.dumps(v).encode("utf-8"),
+        key_serializer=lambda k: k.encode("utf-8") if k else None,
+    )
+
+    message = {
+        "event": "test",
+        "source": "kafka_producer.py",
+        "message": "Hello from Nabeel's Kafka instance!",
+    }
+
+    future = producer.send(
+        topic=TOPIC_NAME,
+        key="test-key",
+        value=message,
+    )
+
+    record_metadata = future.get(timeout=10)   # Wait for ack
+    print(
+        f"[✓] Message sent to topic='{record_metadata.topic}' "
+        f"partition={record_metadata.partition} "
+        f"offset={record_metadata.offset}"
+    )
+
+    producer.flush()
+    producer.close()
+
+# ─── Main ─────────────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    create_topic()
+    send_message()

@@ -1,0 +1,45 @@
+import redis
+
+# Connect to DCS
+client = redis.StrictRedis(
+    host='abc',  # paste your DCS endpoint here
+    port=6379,
+    password='abc',        # paste your password here
+    decode_responses=True
+)
+
+# Test 1: Basic Set & Get
+print("--- Test 1: Basic Set & Get ---")
+client.set('name', 'your client name')
+result = client.get('name')
+print(f"Stored and retrieved: {result}")
+
+# Test 2: Set with Expiry
+print("\n--- Test 2: Set with Expiry (5 seconds) ---")
+client.set('temp_key', 'I will expire!', ex=5)
+print(f"Before expiry: {client.get('temp_key')}")
+
+import time
+time.sleep(6)
+print(f"After expiry: {client.get('temp_key')}")  # Should print None
+
+#  Test 3: Counter
+print("\n--- Test 3: Counter ---")
+client.set('counter', 0)
+client.incr('counter')
+client.incr('counter')
+client.incr('counter')
+print(f"Counter value: {client.get('counter')}")
+
+#  Test 4: Store a List
+print("\n--- Test 4: List ---")
+client.rpush('fruits', 'apple', 'banana', 'mango')
+fruits = client.lrange('fruits', 0, -1)
+print(f"Fruits list: {fruits}")
+
+#  Test 5: Check Connection Info
+print("\n--- Test 5: Connection Info ---")
+info = client.ping()
+print(f"DCS Ping response: {info}")  # Should print True
+
+print("\n All tests passed! DCS is working!")
